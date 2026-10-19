@@ -1,0 +1,98 @@
+// scan — CV の解析に合わせて鳴る音 (after Ryoji Ikeda)。音はすべてサイン波 / インパルス / ホワイトノイズ。
+// 楽譜は Max 側の coll からコマごとに Param で届く (score.py)。
+// out1 L, out2 R, out3 いまのコマ番号 (1〜), out4 終了フラグ
+
+Param run(0);
+Param fps(24);
+Param nframes(124);
+Param trig(0);
+Param nnew(0);
+Param pan(0.5);
+Param freq(1000);
+Param ntr(0);
+Param motion(0);
+Param edge(0);
+Param hold(0);
+
+History t(0);
+History lastrun(0);
+History lasttrig(0);
+History cg(0);
+History cpan(0.5);
+History tg(0);
+History tf(1000);
+History tpan(0.5);
+History tph(0);
+History eg(0);
+History hph(0);
+History sphl(0);
+History sphr(0);
+History kph(0);
+History mo(0);
+History ho(0);
+History lasttick(-1);
+History tickside(0);
+
+sr = samplerate;
+running = run > 0.5;
+restart = running && (lastrun < 0.5);
+lastrun = running;
+tt = restart ? 0 : t;
+spf = sr / fps;
+frame = floor(tt / spf) + 1;
+done = frame > nframes;
+active = running && (done == 0);
+
+// コマのイベント: 新しい箱 → クリック + データ音、見せ方の切替 → ノイズの破裂
+newev = active && (trig != lasttrig);
+lasttrig = trig;
+if (newev && nnew > 0) {
+	cg = 2;
+	cpan = pan;
+	tg = sr * (0.03 + 0.02 * min(nnew, 4));
+	tf = freq;
+	tpan = pan;
+}
+if (newev && edge > 0.5) {
+	eg = sr * 0.025;
+}
+
+click = (cg > 0) ? 0.9 : 0;
+cg = max(cg - 1, 0);
+
+tph = fract(tph + tf / sr);
+tone = (tg > 0) ? sin(twopi * tph) * 0.22 : 0;
+tg = max(tg - 1, 0);
+
+hph = fract(hph + 16000 / sr);
+burst = (eg > 0) ? (noise() * 0.45 + sin(twopi * hph) * 0.12) : 0;
+eg = max(eg - 1, 0);
+
+// 箱の数だけコマの中を刻む細かいクリック (最大 8)。左右交互
+k = min(ntr, 8);
+f = fract(tt / spf);
+tid = frame * 16 + floor(f * k);
+fire = active && (k > 0) && (tid != lasttick);
+lasttick = active ? tid : -1;
+tickside = fire ? 1 - tickside : tickside;
+tick = fire ? 0.28 : 0;
+
+// カメラの動き → 50 / 50.7 Hz のうなり、止まっている間 → 1 kHz テストトーン
+mo = mo + ((active ? motion : 0) - mo) * 0.0004;
+ho = ho + ((active ? hold : 0) - ho) * 0.0004;
+sphl = fract(sphl + 50 / sr);
+sphr = fract(sphr + 50.7 / sr);
+kph = fract(kph + 1000 / sr);
+subl = sin(twopi * sphl) * 0.32 * mo;
+subr = sin(twopi * sphr) * 0.32 * mo;
+test = sin(twopi * kph) * 0.05 * ho;
+
+l = subl + test + click * (1 - cpan) + tone * (1 - tpan) + burst + tick * (1 - tickside);
+r = subr + test + click * cpan + tone * tpan + burst + tick * tickside;
+
+t = active ? tt + 1 : (running ? tt : 0);
+
+out1 = clip(l, -1, 1);
+out2 = clip(r, -1, 1);
+out3 = frame;
+out4 = running && done;

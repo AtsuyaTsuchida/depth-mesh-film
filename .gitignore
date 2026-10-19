@@ -1,0 +1,19 @@
+# Generated data (large / reproducible)
+out/
+models/
+weights/
+runway/
+__pycache__/
+.venv/
+
+# Secrets
+.env
+
+# Sound renders and logs
+sound/*.wav
+sound/*.log
+sound/*.txt
+sound/*.maxpat
+sound/_*.png
+
+.DS_Store
